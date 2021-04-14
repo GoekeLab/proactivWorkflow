@@ -1,0 +1,706 @@
+---
+title: "Identifying active and alternative promoters from RNA-Seq data with proActiv"
+author:
+- name: Joseph Lee
+  affiliation: Faculty of Science, National University of Singapore, 
+               Singapore 117546, Singapore
+- name: Jonathan Göke
+  affiliation: Computational and Systems Biology, Genome Institute of Singapore, 
+               Singapore 138672, Singapore
+  email: gokej@gis.a-star.edu.sg
+output:
+  BiocStyle::html_document
+bibliography: bibliography.bib
+abstract: |
+  In this workflow, we present a step-by-step analysis of promoter activity from
+  RNA-Seq data with proActiv. We begin with RNA-Seq junction files as input, 
+  derive promoter activity estimates, and show how to identify alternative 
+  promoter usage across conditions and visualise these results. We demonstrate 
+  promoter activity analysis on Kidney Clear Cell Renal Carcinoma RNA-Seq data, 
+  and present novel analysis of promoter activity on single-cell RNA-seq of 
+  human embryos. 
+vignette: |
+  %\VignetteIndexEntry{Identifying active and alternative promoters from RNA-Seq 
+  data with proActiv}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+**R version**: `r R.version.string` 
+
+**Bioconductor version**: `r BiocManager::version()`
+
+**Package**: `r packageVersion("proactivWorkflow")`
+
+# Introduction
+
+Many different processes regulate the expression of different gene isoforms, 
+giving rise to transcriptomic diversity and complexity. These include 
+alternative splicing and the use of both alternative starts sites and 
+termination sites [@Wang2008]. In particular, the promoter, defined as the 
+region upstream of the transcription start site, plays an important role in 
+integrating signals from distant enhancers, transcription factor binding, and 
+epigenetic modifications, all of which contribute to a changes in gene and 
+isoform expression [@Smale2003]. A large number of protein coding genes have
+alternative promoters transcribing alternative isoforms, and the use of these 
+alternative promoters have been implicated in many important biological 
+processes and diseases [@Landry2003; @Ayoubi1996; @Seto1988; @Agarwal1996; 
+@Dutertre2010].  
+
+Various approaches have been used to study promoter activity and usage. For 
+instance, ChIP-seq (Chromatin ImmunoPrecipitation sequencing) has been used to 
+study the binding of transcription factors to regulatory genomic sequences 
+proximal to the transcription start site [@Farnham2009; @Collas2010]. In 
+addition, CAGE (Cap Analysis of Gene Expression), which quantifies counts of 
+the 5' end of mRNA, has been used to analyze transcription start site and 
+promoter usage [@Shiraki2003; @deHoon2008]. Although these experimental 
+approaches are sample specific and reliable, such experimental data is most 
+often not available. Another approach utilizes the entire set of annotated 
+transcription start sites to identify promoters. However, this includes a fixed
+set of promoters which is not sample specific, and the high number of promoters
+considered means a loss in statistical power in downstream analyses.  
+
+RNA sequencing has allowed high-throughput transcriptomic analysis of many 
+samples. This data is now readily available in online repositories such as the 
+[Gene Expression Omnibus](https://www.ncbi.nlm.nih.gov/geo/) and 
+[ArrayExpress](https://www.ebi.ac.uk/arrayexpress/). `r Biocpkg("proActiv")` 
+leverages on these advantages and enables the analysis of promoters from RNA-seq
+data [@Demircioğlu2019]. Here, we present a workflow for promoter analyis by 
+estimating promoter activity from RNA-seq data, identifying alternative promoter
+usage across conditions and visualizing these results. We demonstrate 
+`r Biocpkg("proActiv")` on Kidney Clear Cell Renal Carcinoma (KIRC) samples, and 
+present novel analysis of promoters in single-cell RNA-seq data of human 
+embryos.
+
+## Data accessibility
+
+RNA-seq data for this workflow is hosted on Zenodo. This code chunk
+downloads the tar file and extracts its contents to a directory `workflowData`
+in the current working directory.
+```{r folder, eval=TRUE}
+path <- paste0(getwd(), "/workflowData.tar.gz")
+download.file("https://zenodo.org/record/4686667/files/workflowData.tar.gz",
+              destfile = path)
+untar(path)
+```
+
+Directory structure and file descriptions:
+```
+workflowData/
+├── TCGA_Kidney_Junction_Files/
+├── Yan_Junction_Files/
+├── condition.tcga.rds
+├── condition.yan.rds
+├── gencode.v19.annotation.gtf
+├── gencode.v34.annotation.gtf
+├── junctionFilePaths.tcga.rds
+├── junctionFilePaths.yan.rds
+├── promoterAnnotation.gencodev19.rds
+├── promoterAnnotation.gencodev34.rds
+
+```
+- Directory `TCGA_Kidney_Junction_Files/` contains junction files (BED) of KIRC 
+  normal and tumour samples  
+- Directory `Yan_Junction_Files/` contains junction files (BED) of human 
+  preimplantation embryos and human embryonic stem cells  
+- `gencode.v19.annotation.gtf`: gencode annotations (Human Release 19)  
+- `gencode.v34.annotation.gtf`: gencode annotations (Human Release 34)  
+- `condition.tcga.rds`: a character vector of the conditions for each KIRC 
+  sample  
+- `condition.yan.rds`: a character vector of the conditions for each embryo 
+  sample  
+- `junctionFilePaths.tcga.rds`: a character vector of the junction file paths 
+  for each KIRC sample  
+- `junctionFilePaths.yan.rds`: a character vector of the junction file paths for 
+  each embryo sample  
+- `promoterAnnotation.gencodev19.rds`: promoter annotation object corresponding 
+  to gencode annotation (Human Release 19)  
+- `promoterAnnotation.gencodev34.rds`: promoter annotation object corresponding 
+  to gencode annotation (Human Release 34)  
+
+
+# Promoter activity with `r Biocpkg("proActiv")` 
+
+`r Biocpkg("proActiv")` implements the junction reads method to identify active 
+promoters. The absolute promoter activity of a promoter is proportional to the 
+log of the total count of the junction reads aligning to the set of first 
+introns belonging to the transcripts of the promoter. Junction read counts are 
+normalized with `r Biocpkg("DESeq2")` [@Love2014] normalization, and log 
+transformed to obtain absolute promoter activity. Gene expression is defined as 
+the sum of absolute promoter activities for all promoters belonging to a gene. 
+The relative promoter activity of a promoter is the promoter's absolute activity 
+normalized by total gene expression.  
+
+There are four main steps in the `r Biocpkg("proActiv")` workflow. First, 
+*preparePromoterAnnotation* is used to create promoter annotations. These 
+annotations and RNA-seq data are then supplied to *proActiv*, which quantifies 
+promoter counts and activity for annotatedpromoters. After identifying promoters
+of interest with *getAlternativePromoters*, *plotPromoters* and 
+*boxplotPromoters* can be used to visualize differential activity. 
+
+```{r load proactiv, eval=TRUE, message=FALSE}
+library(proActiv)
+```
+
+## Creating promoter annotations
+
+`r Biocpkg("proActiv")` first identifies promoters and the set of introns 
+associated with each promoter based on genomic annotations.  Genomic annotations
+can be downloaded from GENCODE:
+```{r gencode34, eval=FALSE}
+gencode34 <- "http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_34/gencode.v34.annotation.gtf.gz"
+download.file(gencode34, destfile = "workflowData/gencode.v34.annotation.gtf.gz")
+```
+
+Promoter annotations can be created from GTF/GFF3 files or *TxDb* objects by 
+calling the `preparePromoterAnnotation`. Here, promoter annotations are created
+from a GTF file with the `file` argument:
+```{r prepare annotation from GTF, eval=FALSE, cache=TRUE, message=FALSE}
+## Promoter annotation from GTF
+promoterAnnotation <- preparePromoterAnnotation(file = "workflowData/gencode.v34.annotation.gtf.gz",
+                                                species = "Homo_sapiens")
+```
+
+Alternatively, promoter annotations can be created from transcript database with 
+the `txdb` argument. We construct the *TxDb* object from the GTF file with the 
+*makeTxDbFromGFF* function from the `r Biocpkg("GenomicFeatures")` package 
+[@Lawrence2013]. 
+```{r prepare annotation from TxDb, eval=FALSE, message=FALSE, warning=FALSE}
+## Promoter annotation from TxDb
+library(GenomicFeatures)
+txdb.gencode34 <- makeTxDbFromGFF("workflowData/gencode.v34.annotation.gtf.gz",
+                                  organism = "Homo sapiens")
+
+promoterAnnotation <- preparePromoterAnnotation(txdb = txdb.gencode34,
+                                                species = "Homo_sapiens")
+```
+
+################################# Remove this
+```{r tmp1, eval=TRUE}
+promoterAnnotation <- readRDS("workflowData/promoterAnnotation.gencodev34.rds")
+```
+
+Promoter annotations can be created for the following species by supplying the 
+corresponding genomic annotation and one of the following character strings to 
+the argument `species`:
+```{r available species, message=FALSE}
+## Available species
+library(GenomeInfoDb)
+names(genomeStyles())
+```
+
+The promoter annotation object is used downstream to quantify the level of 
+activity at each annotated promoter. It has three slots:
+```{r promoter annotation slots, message=FALSE, cache=TRUE}
+slotNames(promoterAnnotation)
+```
+
+The *intronRanges* slot is *GRanges* object comprising the range of each of 
+first intron annotated with the corresponding transcript(s). The 
+*promoterIdMapping* slot is a dataframe that gives a mapping between promoter, 
+transcript (Ensembl ID) and gene (Ensembl ID). The *promoterCoordinates* slot is
+a *GRanges* object describing the coordinates of each annotated promoter along
+with a map to its associated introns, the end coordinate of the first exon 
+associated with the promoter, and whether the promoter is internal or not. This
+information is used downstream in the next step to estimate promoter activity at
+each annotated promoter.
+
+## Estimating promoter activity
+
+In this step, promoter activity at each annotated promoter is estiamted.
+*proActiv* accepts junction files (aligned with TopHat2 or STAR) or BAM files as
+input. The *proActiv* function has two mandatory arguments:
+
+- `files`: paths to the input files  
+- `promoterAnnotation`: promoter annotation object corresponding to the genome
+   version of the input files (returned by *preparePromoterAnnotation*)  
+
+Optionally, `proActiv` accepts other arguments which provide additional 
+functionality:
+
+- `condition`: a vector which describes the sample condition corresponding to 
+  each input file  
+- `fileLabels`: a vector which describes the labels to apply to each input file  
+- `ncores`: parallelisation option to process a large number of input files  
+
+When `condition` is provided, *proActiv* summarises the results by condition.
+Here, we demonstrate *proActiv* with six STAR junction files from the 
+[SGNEx project](https://github.com/GoekeLab/sg-nex-data) from the A549 and HepG2
+cell lines attached with the `r Biocpkg("proActiv")` package. We define a 
+condition vector corresponding to the input files.
+
+```{r proactive sgnex, eval=TRUE, cache=TRUE, message=FALSE}
+## Load files
+files.sgnex <- list.files(system.file("extdata/vignette/junctions",
+                                      package = "proActiv"),
+                          full.names = TRUE)
+## Define condition
+condition.sgnex <- rep(c("A549", "HepG2"), each = 3) 
+  
+## proActiv
+result <- proActiv(files = files.sgnex, 
+               promoterAnnotation = promoterAnnotation,
+               condition = condition.sgnex,
+               fileLabels = NULL,
+               ncores = 1)
+result
+```
+
+The call to *proActiv* returns a *SummarizedExperiment* container object 
+summarising promoter counts, activity, and gene expression. The `assays` slot 
+contains five matrices: raw and normalised promoter counts, absolute and 
+relative promoter activity, and gene expression. 
+
+```{r assays, eval=TRUE, cache=TRUE}
+assays(result)
+```
+
+`rowData` stores the genomic locus of each promoter, corresponding gene and 
+transcripts, and summarises the mean absolute promoter activity and mean gene 
+expression for each condition (if `condition` is provided). For a given gene, it
+describes that position of the promoters (5' to 3') and whether the promoter is
+internal or not. 
+
+```{r rdata, eval=TRUE, cache=TRUE}
+head(rowData(result))
+```
+
+`colData` stores the condition and sample name of each input file:
+```{r cdata, eval=TRUE, cache=TRUE}
+head(colData(result))
+```
+
+For cleaner downstream analysis, single-exon transcripts for which promoter 
+activity is not quantified can be filtered out.
+```{r remove single exon promoters, eval=TRUE}
+result <- result[complete.cases(assays(result)$promoterCounts),]
+```
+
+## Identifying alternative promoters
+
+The choice of promoter plays a key role in regulating isoform expression. To
+identify promoter switching and alternative promoter usage, 
+`r Biocpkg("proActiv")` implements a linear model, regressing absolute promoter 
+activity $A$ and relative promoter activity $R$ against condition for each 
+promoter $p$:
+
+\begin{equation}
+  A_p=\beta_{A_{0,p}} + \beta_{A_{1,p}} x + \varepsilon_{A_p} \\
+  R_p=\beta_{R_{0,p}} + \beta_{R_{1,p}} x + \varepsilon_{R_p}
+\end{equation}
+
+where $x_i=1$ if the sample corresponds to the user-defined reference condition, 
+and $x_i=0$ if otherwise. The adjusted p-value of the coefficients $\beta_A$ 
+and $\beta_R$ are used to determine if the promoter is significantly 
+alternatively regulated or not. Only promoters that are active with absolute and
+relative promoter activity estimates over a certain threshold are considered. To
+identify promoters up-regulated in the reference condition, promoters that 
+exhibit significant fold change in the reference condition are identified. 
+Down-regulated promoters in the reference condition are identified based on 
+up-regulated promoters in the other samples. In addition, to identify promoters 
+that exhibit differential regulation independent of changes in gene expression, 
+an upper bound is placed on the gene expression fold change. 
+
+This is implemented with *getAlternativePromoters*, which takes in two mandatory
+arguments:
+
+- `result`: the *SummarizedExperiment* returned by *proActiv* with a `condition`
+   vector 
+- `referenceCondition`: the reference condition to be compared. Samples 
+  corresponding to all other conditions will be compared to these samples in the
+  reference condition
+  
+Detection of alternative promoters can be fine-tuned with the following 
+parameters:
+
+- `minAbs` Minimum value for promoter to be active in absolute terms  
+- `minRel` Minimum value for promoter to be active in relative terms  
+- `maxPval` Adjusted p-value threshold for detecting alternative promoters  
+- `promoterFC` Minimum fold change for a promoter in the current condition 
+  compared to all other conditions. Promoters must have at least this magnitude
+  of fold change for alternative usage  
+- `geneFC` Maximum fold change for gene expression. To identify alternative 
+  promoter usage independent of changes in gene expression, limit the gene 
+  expression fold change  
+  
+Alternative promoters are identified here with A549 cell line as the reference 
+condition: 
+```{r alternative promoter sgnex, eval=TRUE, cache=TRUE, message=FALSE}
+alternativePromoters <- getAlternativePromoters(result, referenceCondition = "A549")
+
+alternativePromoters$upReg
+alternativePromoters$downReg
+``` 
+
+*getAlternativePromoters* returns a list of length two summarising up-regulated
+and down-regulated promoters and their corresponding gene.
+
+## Visualisation of promoter activity
+
+Promoter activity estimates can be visualised with *plotPromoters* and 
+*boxplotPromoters*. *plotPromoters* has two mandatory arguments:
+
+- `result`: the *SummarizedExperiment* object returned by *proActiv* with a 
+  `condition` vector  
+- `gene`: a character vector of the gene of interest. This identifier must 
+  correspond to the identifier in the promoter annotation
+
+*plotPromoters* displays transcript model information for the gene of interest. 
+In order to build and plot the transcript model, users may supply either:
+
+- `txdb`: a *TxDb* object. If a *TxDb* is used, we recommend that the TxDb used 
+  should be identical to the one used to prepare promoter annotations, as 
+  annotations from different sources may differ slightly  
+- `ranges`: a list of *GenomicRanges* giving the ranges of exons by transcripts  
+
+We demonstrate *plotPromoters* by visualising promoters of RAP1GAP 
+(ENSG00000076864.19) identified above as an alternative promoter.
+```{r plot1, eval=FALSE, fig.cap="plotPromoters output with RAP1GAP. The plot shows alternative promoter usage in RAP1GAP across HepG2 and A549 cell lines. The top-half of the figure displays a transcript model for RAP1GAP, while the bottom half plots promoter activities for annotated promoters. Promoter 141 is up-regulated in HepG2 and down-regulated in A549, while promoter 137 is up-regulated in A549 and down-regulated in HepG2.", message=FALSE, cache=TRUE}
+gene <- "ENSG00000076864.19"
+plotPromoters(result, gene = gene, txdb = txdb.gencode34)
+``` 
+
+Figure \@ref(fig:plot1) displays the model of all transcripts corresponding
+to RAP1GAP, along with the promoter activities at each annotated promoter.
+
+Alternatively, promoter activity can be visualized with *boxplotPromoters*. This 
+function outputs boxplots of gene expression, absolute and relative promoter 
+activity for a gene of interest. *boxplotPromoters* takes the following 
+arguments:
+
+- `result`: the *SummarizedExperiment* object returned by *proActiv* with a 
+  `condition` vector  
+- `geneId`: a character vector of the gene of interest. This identifier must 
+  correspond to the identifier in the promoter annotation  
+- `geneName`: a character vector of the gene of interest. The common gene name 
+  to be plotted (optional)  
+- `filterInternal`: a boolean variable that determines if internal promoters 
+  should be removed from the plot  
+- `col`: a character vector of colours for plotting. Defaults to NULL, which 
+  uses `r CRANpkg("ggplot2")` default colours  
+
+Below, we call *boxplotPromoters* with RAP1GAP:
+```{r plot2, eval=TRUE, fig.cap="boxplotPromoters output with RAP1GAP. Boxplot visualization of promoter usage in RAP1GAP across HepG2 and A549 cell lines, showing absolute promoter activity (left), relative promoter activity (centre) and total gene expression (right). This reflects alternative promoter usage in promoters 137 and 141 across the cell lines.", message=FALSE, fig.width=10}
+plots <- boxplotPromoters(result, "ENSG00000076864.19")
+library(gridExtra)
+grid.arrange(plots[[1]], plots[[2]], plots[[3]], 
+            nrow = 1, ncol = 3, widths = c(3,3,2))
+```
+
+The *plots* object, shown in stores the plot for absolute promoter activity, 
+relative promoter activity and gene expression in the first, second and third 
+slot respectively. Both figure \@ref(fig:plot1) and figure \@ref(fig:plot2) 
+generated by *plotPromoters* and *boxplotPromoters* reflect the alternative 
+usage of promoters 137 and 141 as called by *getAlternativePromoters*.
+
+# Analysis of TCGA Kidney Renal Clear Cell Carcinoma data
+
+We demonstrate the functionality of `r Biocpkg("proActiv")` by analysing RNA-seq 
+data of Kidney Renal Clear Cell carcinoma (KIRC) samples from The Cancer Genome 
+Atlas (TCGA) Program [@Network2013]. The data comprise 20 normal samples and 18 
+tumour samples. The reference genome used in this analysis corresponds to the 
+GENCODE Release 19 version.
+
+```{r gencode19, eval=FALSE}
+gencode19 <- "http://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_19/gencode.v19.annotation.gtf.gz"
+download.file(gencode19, destfile = "workflowData/gencode.v19.annotation.gtf.gz")
+```
+
+Prepare the promoter annotation:
+```{r prepare annotation 19, eval=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+promoterAnnotation <- preparePromoterAnnotation(file = "workflowData/gencode.v19.annotation.gtf.gz",
+                                                species = "Homo_sapiens")
+```
+
+################################# Remove this
+```{r tmp2}
+promoterAnnotation <- readRDS("workflowData/promoterAnnotation.gencodev19.rds")
+```
+
+Load the junction file paths, condition vector and run proActiv:
+```{r proactiv tcga, eval=TRUE, cache=TRUE, message=FALSE}
+files.tcga <- readRDS("workflowData/junctionFilePaths.tcga.rds")
+condition.tcga <- readRDS("workflowData/condition.tcga.rds")
+result <- proActiv(files = files.tcga, 
+               promoterAnnotation = promoterAnnotation,
+               condition = condition.tcga,
+               fileLabels = NULL,
+               ncores = 1)
+result <- result[complete.cases(assays(result)$promoterCounts),]
+```
+
+Using *prcomp*, we perform a principal component analysis with promoter 
+activity, which shows separate clustering of the normal and tumour samples, 
+suggesting that promoter activity estimates can be used to discriminate between 
+normal and cancerous kidney tissue.
+```{r pcatcga, eval=TRUE, cache=TRUE, message=FALSE, fig.cap="PCA on KIRC tissue and normal samples. Plot of the first and second principal components from principal component analysis of KIRC normal and tissue samples with absolute promoter activity."}
+library(ggplot2)
+assay <- as.matrix(assays(result)$absolutePromoterActivity)
+pca <- prcomp(t(assay))
+vv <- pca$sdev^2
+vv <- paste0(round(vv / sum(vv) * 100,2),"%")
+vv <- paste0("PC", 1:length(vv), ": ", vv)
+pdata <- data.frame(PC1 = pca$x[,1], 
+                    PC2 = pca$x[,2],
+                    Condition = result$condition)
+
+lims <- max(abs(range(pca$x[,1])), abs(range(pca$x[,2]))) * c(-1,1)
+
+ggplot(pdata, aes(x = PC1, y = PC2)) + 
+    geom_point(aes(color = Condition), alpha = 0.9, size = 3) + 
+    xlab(vv[1]) + 
+    ylab(vv[2]) +
+    ggtitle("PCA: KIRC Tumour vs. Normal") +
+    theme_light() + xlim(lims) + ylim(lims) +
+    scale_color_manual(values = rev(c("#F8766D", "#00C0B8")))
+```
+
+Next, we identify alternative promoters between normal and tumour samples.
+```{r alternative promoters tcga, eval=FALSE, cache=TRUE, message=FALSE}
+alternativePromoters <- getAlternativePromoters(result, referenceCondition = "TUMOUR")
+``` 
+
+We visualize promoter usage of a known cancer marker CDK4 in \@ref(fig:plot3) 
+which exhibits alternative promoter usage as identifed by 
+*getAlternativePromoters*:
+```{r plot3, eval=TRUE, fig.cap="boxplotPromoters output with CDK4. Boxplot visualization of promoter usage in CDK4 across normal and tumour samples in KIRC, showing absolute promoter activity (left), relative promoter activity (centre) and total gene expression (right). The plot reflects a switch in promoter usage between tumour and normal samples.", fig.width=11}
+CDK4 <- "ENSG00000135446.12"
+plotCDK4 <- boxplotPromoters(result, CDK4, col=c("#00BFC4", "#F8766D"))
+grid.arrange(plotCDK4[[1]],  plotCDK4[[2]],  plotCDK4[[3]],
+             nrow = 1, ncol = 3, widths = c(3,3,2))
+``` 
+
+# Identifying alternative promoters from single-cell RNA-Seq data
+
+In this section, we demonstrate promoter analysis of single-cell RNA-seq data 
+(scRNA-seq) of human embryos. This data is publicly available via the Gene 
+Expression Omnibus as 
+[GSE36552](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE36552), and 
+is included in the data for ths worflow. The original study applied scRNA-seq 
+analysis to 124 individual cells from human preimplantation embryos and human 
+embryonic stem cells (hESCs) at different passages [@Yan2013]. We utilize the 
+promoter annotation created in the TCGA analysis.
+
+## Estimating promoter activity in human embryos
+
+Load the junction file paths, condition vector and run proActiv:
+```{r proactiv yan, eval=TRUE, cache=TRUE, message=FALSE}
+files.yan <- readRDS("workflowData/junctionFilePaths.yan.rds")
+condition.yan <- readRDS("workflowData/condition.yan.rds")
+result <- proActiv(files = files.yan, 
+               promoterAnnotation = promoterAnnotation,
+               condition = condition.yan,
+               fileLabels = NULL,
+               ncores = 1)
+```
+
+We simplify our analysis by removing hESCs, focusing only on human 
+preimplantation embryos at different developmental stages.
+```{r embryos, eval=TRUE}
+result <- result[, !(result$condition %in% c("hESCp0", "hESCp10"))]
+``` 
+
+## Cell and gene filtering
+
+An additional filtering step is performed to ensure that the sparsity of 
+scRNA-seq data does not compromise downstream analysis.   
+In particular, we:
+
+-  Keep genes that are expressed in at least half of the cells at each 
+   developmental stage  
+-  Keep cells that express more than 80% of genes detected above  
+
+Gene filtering:
+```{r filter genes, eval=TRUE}
+## Filter genes
+gexp <- assays(result)$geneExp
+keep <- rep(TRUE, nrow(gexp))
+cond <- unique(result$condition)
+for (i in seq_len(length(cond))) {
+  gexp.cond <- gexp[,which(result$condition == cond[i])]
+  keep.cond <- rowSums(gexp.cond > 0) > ncol(gexp.cond)/2
+  keep <- keep & keep.cond
+}
+result <- result[keep, ]
+``` 
+
+Cell filtering:
+```{r filter cells, eval=TRUE}
+## Filter samples with more than 80% of genes not expressed
+gexp <- as.matrix(assays(result)$geneExp)
+rownames(gexp) <- rowData(result)$geneId
+nonzero <- colSums(gexp > 0)
+keep <- names(which(nonzero > 0.8 * nrow(gexp)))
+result <- result[, keep]
+``` 
+
+## Promoter activity analysis
+
+We can look at the contribution of each major promoter to the total expression
+for each gene. Figure \@ref(fig:majorVsGene) shows the major promoter activity against
+gene expression for embryos in the 8 cell stage. Single promoter genes lie on 
+the diagonal, while multi-promoter genes lie to the right of the diagonal.
+A single major promoter does not often fully explain gene expression, with 
+minor promoters also contributing to gene expression.
+```{r majorVsGene, fig.cap="Major promoter activity against gene expression in 8 cell embryos.", cache=TRUE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+
+rdata <- rowData(result)
+majorPromoter <- as_tibble(rdata) %>% group_by(geneId) %>% 
+  mutate(promoterCount = n()) %>% filter(EightCell.class == 'Major') 
+
+data <- data.frame(proActiv = majorPromoter$EightCell.mean,
+                   geneExp = majorPromoter$EightCell.gene.mean,
+                   promoterCount = majorPromoter$promoterCount)
+
+ggplot(data, aes(x = geneExp, y = proActiv)) + 
+  geom_point(aes(color = promoterCount), alpha = 0.5) +
+  ggtitle('Major Promoter Activity vs. Gene Expression') + 
+  xlab('Average Gene Expression') + ylab('Average Major Promoter Activity') +
+  labs(colour = 'Number of \n Annotated Promoters') + theme_light() +
+  geom_abline(slope = 1, intercept = 0, linetype = 'dashed') 
+```
+
+A principal component analysis with promoter activity reveals three major 
+clusters of cells by developmental stages (figure \@ref(fig:plotpca)). Cells from 
+earlier stages of development (Oocyte, Zygote, 2-cell and 4-cell stages) form 
+one major cluster, sharing similar promoter activity profiles. The next major 
+cluster comprises cells from the 8-cell stage and Morulae, while Blastocysts 
+appear to have promoter activity profiles distinct from cells in all other 
+developmental stages.
+
+```{r plotpca, fig.cap="PCA on human preimplantation embryos. Plot of the first and second principal components from principal component analysis of human preimplantation embryos at different developmental stages with absolute promoter activity.", cache=TRUE}
+library(ggplot2)
+library(RColorBrewer)
+
+assay <- as.matrix(assays(result)$absolutePromoterActivity)
+keep <- complete.cases(assay)
+assay <- assay[keep,]
+
+pca <- prcomp(t(assay))
+vv <- pca$sdev^2
+vv <- paste0(round(vv / sum(vv) * 100,2),"%")
+vv <- paste0("PC", 1:length(vv), ": ", vv)
+pdata <- data.frame(PC1 = pca$x[,1], 
+                    PC2 = pca$x[,2],
+                    Condition = result$condition)
+pdata$Condition <- factor(pdata$Condition,
+                          levels = c("Oocyte", "Zygote", "TwoCell", "FourCell",
+                                     "EightCell", "Morulae", "Blastocyst"))
+
+lims <- max(abs(range(pca$x[,1])), abs(range(pca$x[,2]))) * c(-1,1)
+  
+ggplot(pdata, aes(x = PC1, y = PC2)) + 
+  geom_point(aes(color = Condition), alpha = 0.7, size = 2.5) + 
+  xlab(vv[1]) + 
+  ylab(vv[2]) +
+  ggtitle("PCA: Human embryos") +
+  theme_light() + xlim(lims) + ylim(lims) +
+  scale_color_manual(values = brewer.pal(9, "Paired")[-c(7:8)])
+```
+
+The maternal-to-zygotic transition (MZT) occurs between 4-cell and 8-cell stages 
+in embryonic development [@Braude1988; @Tadros2009].The separation in the 
+promoter activity profiles between the 4-cell cluster and the 8-cell cluster may
+suggest that the MZT could be characterized by a change in promoter activity and
+usage. Additionally, the separation in promoter activity profiles between the 
+Morulae and Blastocyst may reflect the process of blastulation, characterized by
+the establishment of cell polarity and axis formation 
+[@Rossant2009; @Cockburn2010].
+
+Because the differences in the 4-cell to 8-cell promoter activity profiles 
+appear the most significant, and are suggestive of the MZT, we identify 
+alternative promoters between these two developmental stages. This may identify
+instances of alternative promoter usage involved in the MZT. 
+```{r mzt}
+## Restrict analysis to 4-cell and 8-cell
+## Remove 8 cell embryos with ambiguous identities
+result <- result[, result$condition %in% c("FourCell", "EightCell")]
+result <- result[, -grep("8cellembryo2Cell[5-8]", result$sampleName)]
+```
+
+Identify alternative promoters with the 8-cell embryos as the reference 
+condition:
+```{r alternative promoters yan, eval=TRUE, cache=TRUE, message=FALSE}
+## Find alternative promoters
+alternativePromoters <- getAlternativePromoters(result, referenceCondition = "EightCell")
+
+up <- alternativePromoters$upReg
+down <- alternativePromoters$downReg
+``` 
+
+We compare the promoter activities of embryos in the 4 cell stage and those 
+in the 8 cell stage in figure \@ref(fig:compare4and8), coloured by their gene 
+expression differences. We expect alternatively use promoters to lie away from 
+the diagonal, while displaying similar levels of gene expression across 4 and 8
+cell embryos. The promoters identified by *getAlternativePromoters* are labelled
+here. 
+```{r compare4and8, fig.cap="Comparison of 4 cell promoter activity and 8 cell promoter activity.", warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+
+set.seed(42)
+
+rdata <- as_tibble(rowData(result)) %>% 
+  filter(!internalPromoter)
+data <- data.frame(FourCell = rdata$FourCell.mean,
+                   EightCell = rdata$EightCell.mean,
+                   FoldChange = log2(rdata$EightCell.gene.mean / rdata$FourCell.gene.mean),
+                   PromoterId = rdata$promoterId)
+
+samplePromoters <- c(sample(up$promoterId, size= 5),
+                     sample(down$promoterId, size = 5))
+
+ggplot(data, aes(x=FourCell, y=EightCell, label = PromoterId)) + 
+  geom_point(aes(color = FoldChange), alpha = 0.5) + 
+  ggtitle("4 Cell vs. 8 Cell Promoter Actvity") +
+  xlab("4 cell Avg. Promoter Activity") + ylab("8 Cell Avg. Promoter Activity") +
+  labs(color = "Gene Exp. \n Fold Change") + theme_light() +
+  geom_abline(slope = 1, intercept = 0, linetype = 'dashed') +
+  scale_color_gradient2(low = "blue", high = "red", mid = "lightgrey") +
+  geom_text_repel(data = subset(data, PromoterId %in% samplePromoters), box.padding = 1, size = 3) +
+  geom_point(data = subset(data, PromoterId %in% samplePromoters), color = "black", pch=21)
+
+```
+
+In particular, we visualize the promoter usage of two genes,
+PIAS1 (ENSG00000033800.9) and HP1BP3 (ENSG0000127483.13) in 
+figure \@ref(fig:plotPIAS1) and figure \@ref(fig:plotHP1BP3) respectively, 
+identified with *getAlternativePromoters*.
+
+```{r plotPIAS1, eval=TRUE, fig.cap="boxplotPromoters output with PIAS1. In embryos in the 4-cell stage, promoter 2502 is up-regulated while promoter 2506 is down-regulated, relative to promoter activities in embryos at the 8-cell stage. Fold change of total gene expression is not significant (p > 0.05)", fig.width=11}
+PIAS1 <- "ENSG00000033800.9"
+plotPIAS1 <- boxplotPromoters(result, PIAS1, col = c("#33A02C", "#FB9A99"))
+grid.arrange(plotPIAS1[[1]], plotPIAS1[[2]], plotPIAS1[[3]], 
+             nrow = 1, ncol = 3)
+``` 
+
+```{r plotHP1BP3, eval=TRUE, fig.cap="boxplotPromoters output with HP1BP3. Embryos in the 4-cell stage show down-regulation of promoter 25200 and up-regulation of promoter 25201 relative to 8-cell embryos. Fold change of total gene expression is not significant (p>0.05).", fig.width=11}
+HP1BP3 <- "ENSG00000127483.13"
+plotHP1BP3 <- boxplotPromoters(result, HP1BP3, col = c("#33A02C", "#FB9A99"))
+grid.arrange(plotHP1BP3[[1]], plotHP1BP3[[2]], plotHP1BP3[[3]], 
+             nrow = 1, ncol = 3)
+``` 
+
+The MZT is characterized by degradation of maternal mRNA and transcripts to 
+begin the transcription of zygotic genes [@Schultz2002; @Lee2014]. Alternative 
+promoter usage, as shown in PIAS1 and HP1BP3, could be involved in this process 
+of mRNA degradation and silencing and for onset of zygotic transcription. For 
+instance, the PIASy family of genes have been implicated in the proper induction 
+of zygotic genome activation and embryonic development [@Higuchi2019]. In 
+addition, HP1BP3 has 
+been shown to promote global miRNA biogenesis in human cells [@Liu2016]. 
+Alternative promoter usage in HP1BP3 between 4-cell and 8-cell embryos could be 
+involved in miRNA production and silencing of maternal mRNA in this transition. 
+While miRNA mediated decay of maternal transcripts has not been shown in the 
+human MZT, this system is present in Drosophila and Zebrafish
+[@Tadros2005; @Giraldez2006]. 
+
+# Session information{.unnumbered}
+```{r sessionInfo, echo=FALSE}
+sessionInfo()
+```
+
+# References{.unnumbered}
