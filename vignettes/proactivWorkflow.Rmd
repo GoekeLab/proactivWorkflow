@@ -165,7 +165,7 @@ Alternatively, promoter annotations can be created from transcript database with
 the `txdb` argument. We construct the *TxDb* object from the GTF file with the 
 *makeTxDbFromGFF* function from the `r Biocpkg("GenomicFeatures")` package 
 [@Lawrence2013]. 
-```{r prepare annotation from TxDb, eval=FALSE, message=FALSE, warning=FALSE}
+```{r prepare annotation from TxDb, eval=TRUE, message=FALSE, warning=FALSE}
 ## Promoter annotation from TxDb
 library(GenomicFeatures)
 txdb.gencode34 <- makeTxDbFromGFF("workflowData/gencode.v34.annotation.gtf.gz",
@@ -173,11 +173,6 @@ txdb.gencode34 <- makeTxDbFromGFF("workflowData/gencode.v34.annotation.gtf.gz",
 
 promoterAnnotation <- preparePromoterAnnotation(txdb = txdb.gencode34,
                                                 species = "Homo_sapiens")
-```
-
-################################# Remove this
-```{r tmp1, eval=TRUE}
-promoterAnnotation <- readRDS("workflowData/promoterAnnotation.gencodev34.rds")
 ```
 
 Promoter annotations can be created for the following species by supplying the 
@@ -407,14 +402,9 @@ download.file(gencode19, destfile = "workflowData/gencode.v19.annotation.gtf.gz"
 ```
 
 Prepare the promoter annotation:
-```{r prepare annotation 19, eval=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
+```{r prepare annotation 19, eval=TRUE, cache=TRUE, message=FALSE, warning=FALSE}
 promoterAnnotation <- preparePromoterAnnotation(file = "workflowData/gencode.v19.annotation.gtf.gz",
                                                 species = "Homo_sapiens")
-```
-
-################################# Remove this
-```{r tmp2}
-promoterAnnotation <- readRDS("workflowData/promoterAnnotation.gencodev19.rds")
 ```
 
 Load the junction file paths, condition vector and run proActiv:
