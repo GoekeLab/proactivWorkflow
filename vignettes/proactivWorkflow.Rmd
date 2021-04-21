@@ -5,13 +5,13 @@ author:
   affiliation: Faculty of Science, National University of Singapore, 
                Singapore 117546, Singapore
   email: joseph.lee@u.nus.edu
+- name: Deniz Demircioğlu
+  affiliation: Tisch Cancer Institute, Icahn School of Medicine at Mount Sinai,
+               NY 10029, United States
 - name: Jonathan Göke
   affiliation: Computational and Systems Biology, Genome Institute of Singapore, 
                Singapore 138672, Singapore
   email: gokej@gis.a-star.edu.sg
-- name: Deniz Demircioğlu
-  affiliation: Tisch Cancer Institute, Icahn School of Medicine at Mount Sinai,
-               NY 10029, United States
 output:
   BiocStyle::html_document
 bibliography: bibliography.bib
@@ -660,17 +660,17 @@ promoters from single cell RNA-Seq with proActiv.
 # Discussion
 
 In this article, we present a workflow for identification of active and 
-alternative promoters with proActiv. Our workflow provides a detailed, 
-step-by-step guide for promoter analysis, with well-documented and reproducible 
-examples. We demonstrate two use cases of proActiv that are prevalent and 
-increasingly relevant in genomics and transcriptomics research. First, we 
-analyse promoter activity using publicly available TCGA data, illustrating
-how promoter usage is associated with cancer and normal samples. Secondly, we 
-analyse promoter activity from single-cell data, showing how promoters
-can be studied at the resolution of single cells. Our workflow represents the 
-first single-cell analysis of promoters. Together, this article illustrates an
-exploration of RNA-Seq data to study the role of alternative promoters and how 
-they contribute to isoform expression.
+alternative promoters with `r Biocpkg("proActiv")`. Our workflow provides a 
+detailed, step-by-step guide for promoter analysis, with well-documented and 
+reproducible examples. We demonstrate two use cases of `r Biocpkg("proActiv")` 
+that are prevalent and increasingly relevant in genomics and transcriptomics 
+research. First, we analyse promoter activity using publicly available TCGA 
+data, illustrating how promoter usage is associated with cancer and normal 
+samples. Secondly, we analyse promoter activity from single-cell data of human 
+embryos, showing how promoterscan be studied at the resolution of single cells.
+Our workflow represents the first single-cell analysis of promoters. Together, 
+this article illustrates an exploration of RNA-Seq data to study the role of 
+alternative promoters and how they contribute to isoform expression.
 
 # Session information{.unnumbered}
 ```{r sessionInfo, echo=FALSE}
