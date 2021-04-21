@@ -655,7 +655,7 @@ grid.arrange(plotHP1BP3[[1]], plotHP1BP3[[2]], plotHP1BP3[[3]],
 
 These results illustrate the regulation of alternative promoters in early 
 embryonic development and demonstrate the ability to analyse alternative 
-promoters from single cell RNA-Seq with proActiv. 
+promoters from single cell RNA-Seq with `r Biocpkg("proActiv")`. 
 
 # Discussion
 
@@ -667,7 +667,7 @@ that are prevalent and increasingly relevant in genomics and transcriptomics
 research. First, we analyse promoter activity using publicly available TCGA 
 data, illustrating how promoter usage is associated with cancer and normal 
 samples. Secondly, we analyse promoter activity from single-cell data of human 
-embryos, showing how promoterscan be studied at the resolution of single cells.
+embryos, showing how promoters can be studied at the resolution of single cells.
 Our workflow represents the first single-cell analysis of promoters. Together, 
 this article illustrates an exploration of RNA-Seq data to study the role of 
 alternative promoters and how they contribute to isoform expression.
