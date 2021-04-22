@@ -1,6 +1,6 @@
 Package: proactivWorkflow
 Title: Identifying active and alternative promoters from RNA-seq data with proActiv
-Version: 0.0.99
+Version: 0.99.0
 Authors@R: c(
     person(given = "Joseph",
            family = "Lee",
