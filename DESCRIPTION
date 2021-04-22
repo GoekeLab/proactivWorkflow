@@ -33,7 +33,7 @@ biocViews: Workflow,
     EpigeneticsWorkflow,
     GeneExpressionWorkflow, 
     SingleCellWorkflow
-License: GPL (>= 3)
+License: GPL (>= 3) + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
