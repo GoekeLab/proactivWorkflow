@@ -3,33 +3,36 @@ Title: Identifying active and alternative promoters from RNA-seq data with proAc
 Version: 0.99.0
 Authors@R: c(
     person(given = "Joseph",
-           family = "Lee",
-           role = c("aut", "cre"),
-           email = "joseph.lee@u.nus.edu"),
+        family = "Lee",
+        role = c("aut", "cre"),
+        email = "joseph.lee@u.nus.edu"),
     person(given = "Deniz", 
-           family = "Demircioğlu",
-           role = c("aut")),
+        family = "Demircioğlu",
+        role = c("aut")),
     person(given = " Jonathan",
-           family = "Goke",
-           role = c("aut"),
-           email = "gokej@gis.a-star.edu.sg"))
+        family = "Goke",
+        role = c("aut"),
+        email = "gokej@gis.a-star.edu.sg"))
 Description:   In this workflow, we present a step-by-step analysis of promoter 
-  activity from RNA-Seq data with proActiv. We begin with RNA-Seq junction files
-  as input, derive promoter activity estimates, and show how to identify 
-  alternative promoter usage across conditions and visualise these results. We 
-  demonstrate promoter activity analysis on Kidney Clear Cell Renal Carcinoma 
-  RNA-Seq data, and present novel analysis of promoter activity on single-cell 
-  RNA-seq of human embryos. 
+    activity from RNA-Seq data with proActiv. We begin with RNA-Seq junction files
+    as input, derive promoter activity estimates, and show how to identify 
+    alternative promoter usage across conditions and visualise these results. We 
+    demonstrate promoter activity analysis on Kidney Clear Cell Renal Carcinoma 
+    RNA-Seq data, and present novel analysis of promoter activity on single-cell 
+    RNA-seq of human embryos. 
 Suggests: BiocStyle, knitr, rmarkdown
-Imports: proActiv,
-  dplyr,
-  GenomicFeatures,
-  GenomeInfoDb,
-  ggplot2,
-  ggrepel,
-  gridExtra,
-  RColorBrewer
-biocViews: Workflow
+Depends: proActiv,
+    dplyr,
+    GenomicFeatures,
+    GenomeInfoDb,
+    ggplot2,
+    ggrepel,
+    gridExtra,
+    RColorBrewer
+biocViews: Workflow, 
+    EpigeneticsWorkflow,
+    GeneExpressionWorkflow, 
+    SingleCellWorkflow
 License: GPL (>= 3)
 Encoding: UTF-8
 LazyData: true
